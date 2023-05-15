@@ -53,5 +53,5 @@ make
 
 ### Current State
 
-This repository is currently solely by [Langyan Zang](https://github.com/7lang2yan?tab=repositories). Pull requests and issues are welcome.
+This repository is currently developed solely by [Langyan Zang](https://github.com/7lang2yan?tab=repositories). Pull requests and issues are welcome.
 
