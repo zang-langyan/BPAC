@@ -160,7 +160,7 @@ bool Window::run(){
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    panels.run();
+    panels.run(clear_color);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

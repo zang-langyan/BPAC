@@ -33,11 +33,11 @@ class ImGui_Panel {
     ImGui_Panel() = default;
     ~ImGui_Panel() = default;
 
-    void run();
+    void run(ImVec4& __clear_color);
     bool read_PDF_Image(); // initialize image texture
   
   private:
-    void menu(); // menu bar
+    void menu(ImVec4& __clear_color); // menu bar
     void bib_export(std::string __save_path); // export bibtex file
     void md_export(std::string __save_path); // export markdown file
     std::filesystem::path save_entry = std::filesystem::current_path().parent_path();

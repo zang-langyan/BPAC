@@ -5,8 +5,8 @@
 
 // -------------------------------------------------------------------------------
 
-void ImGui_Panel::run() {
-  menu();
+void ImGui_Panel::run(ImVec4& __clear_color) {
+  menu(__clear_color);
   if (is_explorer_open)
     explorer();
 
@@ -92,7 +92,7 @@ void ImGui_Panel::md_export(std::string __save_path){
   md_file.close();
 }
 
-void ImGui_Panel::menu(){
+void ImGui_Panel::menu(ImVec4& __clear_color){
 
   ImGui::BeginMainMenuBar();
 
@@ -118,21 +118,46 @@ void ImGui_Panel::menu(){
 
 
   if (ImGui::BeginMenu("Settings")) {
-    ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
+    if (ImGui::BeginMenu("Panels")){
+      ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
       ImGui::Checkbox("PDF reader", &is_reader_open);
-    ImGui::PopItemFlag();
+      ImGui::PopItemFlag();
 
-    ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
-      ImGui::Checkbox("File manager", &is_manager_open);
-    ImGui::PopItemFlag();
+      ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
+        ImGui::Checkbox("File manager", &is_manager_open);
+      ImGui::PopItemFlag();
 
-    ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
-      ImGui::Checkbox("File explorer", &is_explorer_open);
-    ImGui::PopItemFlag();
+      ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
+        ImGui::Checkbox("File explorer", &is_explorer_open);
+      ImGui::PopItemFlag();
 
-    ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
-      ImGui::Checkbox("PDF information", &is_information_open);
-    ImGui::PopItemFlag();
+      ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
+        ImGui::Checkbox("PDF information", &is_information_open);
+      ImGui::PopItemFlag();
+
+      ImGui::EndMenu();
+    }
+   
+    if (ImGui::BeginMenu("Preference")){
+      ImGui::PushItemFlag(ImGuiItemFlags_SelectableDontClosePopup, true);
+        ImGui::ColorEdit3("Background Color", (float*)&__clear_color);
+      ImGui::PopItemFlag();
+
+      if (ImGui::BeginMenu("Style")){
+        if (ImGui::MenuItem("Dark")) {
+          ImGui::StyleColorsDark();
+        }
+        if (ImGui::MenuItem("Light")) {
+          ImGui::StyleColorsLight();
+        }
+        if (ImGui::MenuItem("Classic")) {
+          ImGui::StyleColorsClassic();
+        }
+        ImGui::EndMenu();
+      }
+
+      ImGui::EndMenu();
+    }
 
     ImGui::EndMenu();
   }
