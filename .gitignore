@@ -1,0 +1,15 @@
+# built folder
+built/
+.[oa]
+
+# executables
+BPAC++.*
+BPAC++
+*.ini
+
+# other
+temp.*
+.vscode/
+
+OFL.txt
+assets/fonts/Cousine/LICENSE.txt
