@@ -57,6 +57,7 @@ std::string Information::getCitekey() {
 File_Info Information::getFileInfo() {
 
   return File_Info{
+    filePath,
     type,
     title,
     author,

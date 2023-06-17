@@ -84,7 +84,7 @@ ifeq ($(UNAME_S), Darwin) #APPLE
 	LIBS += -lpoppler -lpoppler-cpp
 
 	CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include 
-	CXXFLAGS += -I/usr/local/Cellar/poppler/23.04.0_1/include/poppler/cpp 
+	CXXFLAGS += -I/usr/local/Cellar/poppler/23.05.0/include/poppler/cpp 
 	CXXFLAGS += -Wno-deprecated
 	CFLAGS = $(CXXFLAGS)
 endif

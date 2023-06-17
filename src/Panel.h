@@ -3,7 +3,10 @@
 
 #include "GLIncludes.h"
 #include <string>
-#include <vector>
+// #include <vector>
+// #include <list>
+#include <set>
+// #include <map>
 #include <iostream>
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -22,10 +25,29 @@ struct File{
   File_Info info;
 };
 
+struct File_Comp{
+  bool operator()(const File& lhs, const File& rhs) const { 
+    return lhs.path < rhs.path; 
+  }
+};
+
 struct Folder{
   std::string name;
-  std::vector<File> files;
-  // std::vector<Folder> folders;
+  std::set<File,File_Comp> files;
+};
+
+struct Folder_Comp{
+  bool operator()(const Folder& lhs, const Folder& rhs) const { 
+    return lhs.name < rhs.name; 
+  }
+};
+
+struct State{
+  std::set<File,File_Comp> files;
+  std::set<Folder,Folder_Comp> folders;
+  Folder current_Folder;
+  File current_Folder_File;
+  File current_Root_File;
 };
 
 class ImGui_Panel {
@@ -48,12 +70,10 @@ class ImGui_Panel {
     bool init();
 
   private: // reader pane
-    bool is_reader_open = true;
     void reader(); // pdf reader panel
 
     // pdf file
-    PDF pdf;
-    std::string current_filePath = "assets/pdf/BPAC.pdf";
+    // std::string current_filePath = "assets/pdf/BPAC_video.pdf";
     
     // image texture 
     unsigned char* img; // image data
@@ -62,28 +82,26 @@ class ImGui_Panel {
     int current_page; // current page number
 
   private: // file manager pane
-    bool is_manager_open = true;
     void manager(); // file manager panel
 
     // folder and file states 
-    std::vector<Folder> folders;
-    std::vector<File> files; // files in root folder
+    // std::map<std::string, Folder> folders;
+    // std::map<std::string, File> files; // files in root folder
+    // std::set<Folder> folders;
+    // std::set<File> files; // files in root folder
 
     // current selected file and folder
-    Folder* current_Folder = nullptr;
-    File* current_File = nullptr;
+    // std::string current_folder = "";
+    // std::string current_file = "";
+    // Folder* current_Folder = nullptr;
+    // File* current_File = nullptr;
 
   private: // file explorer
-    bool is_explorer_open = true;
     void explorer(); // file explorer panel
-    poppler::document* pdf_doc; // temporary pdf document
-    std::filesystem::path root_entry; // root entry of file explorer
 
 
   private: // file information
-    bool is_information_open = true;
     void information(); // file information panel
-    Information info_getter; // pdf information getter
 };
 
 #endif // PANEL_H

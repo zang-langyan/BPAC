@@ -3,6 +3,26 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+static bool is_explorer_open = true;
+static bool is_information_open = true;
+static bool is_manager_open = true;
+static bool is_reader_open = true;
+
+// static std::set<Folder> folders;
+// static std::set<File> files; // files in root folder
+static State state;
+
+static PDF pdf;
+
+static poppler::document* pdf_doc; // temporary pdf document
+static std::filesystem::path root_entry; // root entry of file explorer
+
+static std::string current_filePath = "assets/pdf/BPAC_video.pdf";
+
+static Information info_getter; // pdf information getter
+
+// state variables
+  static bool is_in_root = true;
 // -------------------------------------------------------------------------------
 
 void ImGui_Panel::run(ImVec4& __clear_color) {
@@ -30,7 +50,7 @@ void ImGui_Panel::bib_export(std::string __save_path){
   // write header
   bib_file << "%% Document created by BPAC++ (by 臧朗彦)\n\n";
 
-  for (auto& file : files) {
+  for (const auto& file : state.files) {
     bib_file << "@article{" << file.info.citekey << ",\n";
     bib_file << "  title={" << file.info.title << "},\n";
     bib_file << "  author={" << file.info.author << "},\n";
@@ -41,7 +61,7 @@ void ImGui_Panel::bib_export(std::string __save_path){
     bib_file << "}\n\n";
   }
 
-  for (auto& folder : folders) {
+  for (const auto& folder : state.folders) {
     for (auto& file : folder.files) {
       bib_file << "@article{" << file.info.citekey << ",\n";
       bib_file << "  title={" << file.info.title << "},\n";
@@ -65,7 +85,7 @@ void ImGui_Panel::md_export(std::string __save_path){
   md_file << "## Bibliography Summary\n\n";
   md_file << "| Title | Author | Journal | Year | Publisher | Notes |\n";
 
-  for (auto& file: files) {
+  for (const auto& file : state.files) {
     // md_file << "| " << "<a href= \"" << file.path << "\"> " <<  file.info.title << "</a>"
     md_file << "| " << file.info.title
             << " | " << file.info.author 
@@ -76,8 +96,8 @@ void ImGui_Panel::md_export(std::string __save_path){
             << " |\n";
   }
 
-  for (auto& folder : folders) {
-    for (auto& file : folder.files) {
+  for (const auto& folder : state.folders) {
+    for (const auto& file : folder.files) {
       // md_file << "| " << "<a href= \"" << file.path << "\"> " <<  file.info.title << "</a>"
       md_file << "| " << file.info.title
               << " | " << file.info.author 
@@ -393,8 +413,6 @@ void ImGui_Panel::manager(){
   ImGui::SetNextWindowPos(ImVec2(2, 598), ImGuiCond_FirstUseEver);
   ImGui::Begin("File Manager", &is_manager_open);
 
-    // current_Folder = nullptr;
-    // current_File = nullptr;
     // add folder
     static char newFolderName[256] = "";
     ImGui::PushItemWidth(156.f);
@@ -402,24 +420,26 @@ void ImGui_Panel::manager(){
     ImGui::PopItemWidth();
     ImGui::SameLine();
     if (ImGui::Button("Add Folder")) {
-      Folder folder;
-      folder.name = newFolderName;
-      folders.push_back(folder);
+      // Folder folder;
+      // folder.name = newFolderName;
+      // folders.push_back(folder);
+      state.folders.insert(Folder{newFolderName});
     }
 
     // delete button
     ImGui::SameLine();
     if (ImGui::Button("Delete Folder")) {
-      if (current_Folder != nullptr) {
-        folders.erase(folders.begin()+(current_Folder-folders.data()));
-      } 
+      if (!is_in_root && !state.folders.empty()) {
+        state.folders.erase(state.current_Folder);
+      }
+      is_in_root = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete File")) {
-      if (current_File != nullptr && current_Folder != nullptr) {
-        current_Folder->files.erase(current_Folder->files.begin() + (current_File-current_Folder->files.data()));
-      } else if (current_File != nullptr) {
-        files.erase(files.begin() + (current_File-files.data()));
+      if (is_in_root && !state.files.empty()) {
+        state.files.erase(state.current_Root_File);
+      } else if (!is_in_root && !state.current_Folder.files.empty()) {
+        state.current_Folder.files.erase(state.current_Folder_File);
       }
     }
       
@@ -429,51 +449,73 @@ void ImGui_Panel::manager(){
     // Root
     static int root_file_selected = -1;
     static int folder_file_selected = -1;
-    for (int fileID = 0; fileID < files.size(); fileID++) {
-      char fileName[256];
-      sprintf(fileName, "%s##%d_root_file",files[fileID].name.c_str(), fileID);
+    int fileID = 0;
 
-      if (ImGui::Selectable(fileName, root_file_selected == fileID)){
+
+    for (const auto& root_file : state.files) {
+      char fileName[512];
+      sprintf(fileName, "%s##%d_root_file", root_file.name.c_str(), fileID);
+
+      if (ImGui::Selectable(fileName, root_file_selected == fileID && is_in_root)){
         root_file_selected = fileID;
         folder_file_selected = -1;
-        current_filePath = files[fileID].path;
-        current_File = &files[fileID];
+        state.current_Root_File = root_file;
+        current_filePath = root_file.path;
+        is_in_root = true;
       }
 
+      fileID++;
     }
+
+    
 
     // Folders
     int folder_selected = -1;
-    for (int folderID = 0; folderID < folders.size(); folderID++) {
+    int folderID = 0;
+
+    for (const auto& folder : state.folders) {
       ImGui::Separator();
 
-      char folderName[256];
-      sprintf(folderName, "%s##%d_folder",folders[folderID].name.c_str(), folderID);
+      char folderName[512];
+      sprintf(folderName, "%s##%d_folder",folder.name.c_str(), folderID);
       if (ImGui::CollapsingHeader(folderName)){ // folder
         folder_selected = folderID;
-        current_Folder = &folders[folderID];
+        state.current_Folder = folder;
+        if (folder.files.empty()) {
+          state.current_Folder_File = File{};
+        } else {
+          state.current_Folder_File = *(folder.files.begin());
+        }
+        is_in_root = false;
 
-        for (int fileID = 0; fileID < folders[folderID].files.size(); fileID++) {
-          char fileName[256];
-          sprintf(fileName, "%s##%d%d_folder_file",folders[folderID].files[fileID].name.c_str(), folderID, fileID);
+        int folder_fileID = 0;
 
-          if (ImGui::Selectable(fileName, folder_file_selected == fileID)){
+        for (const auto& file : folder.files) {
+          char fileName[512];
+          sprintf(fileName, "%s##%d%d_folder_file",file.name.c_str(), folderID, folder_fileID);
+
+          if (ImGui::Selectable(fileName, folder_file_selected == fileID && !is_in_root)){
             folder_file_selected = fileID;
             root_file_selected = -1;
-            current_filePath = folders[folderID].files[fileID].path;
-            current_File = &folders[folderID].files[fileID];
+            state.current_Folder = folder;
+            state.current_Folder_File = file;
+            current_filePath = file.path;
+            is_in_root = false;
           }
 
+          folder_fileID++;
         }
+        
 
       }
 
+      folderID++;
     }
-    
+  
     // make sure root and folders can be distinguished
-    if (folder_selected == -1) {
-      current_Folder = nullptr;
-    }
+    // if (folder_selected == -1) {
+    //   current_Folder = nullptr;
+    // }
 
   ImGui::End();
   // -------------------------------------------------
@@ -514,25 +556,21 @@ void ImGui_Panel::explorer()
         
         info_getter.loadFile(entry.path().string());
 
-        if (current_Folder == nullptr)
+        if (is_in_root)
         {
-
-          files.push_back(
-            File{
-              entry.path().filename().string(), // name
-              entry.path().string(), // path
-              info_getter.getFileInfo(), // pdf information
-            }
-          );
-
-        } else {
-          current_Folder->files.push_back(
-            File{
-              entry.path().filename().string(), // name
-              entry.path().string(), // path
-              info_getter.getFileInfo(), // pdf information
-            }
-          );
+          state.files.insert(File{
+            entry.path().filename().string(), // file name
+            entry.path().string(), // file path
+            info_getter.getFileInfo(), // pdf information
+          });
+        } else if (!is_in_root) {
+          state.folders.erase(state.current_Folder);
+          state.current_Folder.files.insert(File{
+            entry.path().filename().string(), // file name
+            entry.path().string(), // file path
+            info_getter.getFileInfo(), // pdf information
+          });
+          state.folders.insert(state.current_Folder);
         }
 
       } else {
@@ -557,16 +595,34 @@ void ImGui_Panel::information(){
 
     // Type
     const char* pdf_type[] = {"article", "book", "booklet", "inbook", "inproceedings/conference", "incollection", "manual", "phdthesis/mastersthesis", "techreport", "misc", "proceedings", "unpublished"}; 
+    // static int type_holder = current_File != nullptr? current_File->info.type : 0;
     static int type_holder = 0;
+    if (is_in_root && state.current_Root_File.path == "") {
+      type_holder = 0;
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      type_holder = state.current_Root_File.info.type;
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      type_holder = 0;
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      type_holder = state.current_Folder_File.info.type;
+    }
     // ImGui::Combo("Type", current_File != nullptr? &current_File->info.type : &type_holder, pdf_type, IM_ARRAYSIZE(pdf_type));
-    if (ImGui::BeginCombo("Type", pdf_type[current_File != nullptr? current_File->info.type : type_holder])) {
+    // const char* current_type = pdf_type[type_holder];
+
+    if (ImGui::BeginCombo("Type", pdf_type[type_holder])) {
       for (int n = 0; n < IM_ARRAYSIZE(pdf_type); n++) {
-        bool is_selected = (current_File != nullptr? current_File->info.type : type_holder) == n;
+        bool is_selected = type_holder == n;
         if (ImGui::Selectable(pdf_type[n], is_selected)) {
-          if (current_File != nullptr) {
-            current_File->info.type = n;
-          } else {
-            type_holder = n;
+          if (is_in_root && state.current_Root_File.path != "") {
+            state.files.erase(state.current_Root_File);
+              state.current_Root_File.info.type = n;
+            state.files.insert(state.current_Root_File);
+          } else if (!is_in_root && state.current_Folder_File.path != "") {
+            state.folders.erase(state.current_Folder);
+              state.current_Folder.files.erase(state.current_Folder_File);
+                state.current_Folder_File.info.type = n;
+              state.current_Folder.files.insert(state.current_Folder_File);
+            state.folders.insert(state.current_Folder);
           }
         }
         if (is_selected) {
@@ -580,98 +636,229 @@ void ImGui_Panel::information(){
     // Title
     ImGui::Separator();
     // text
-    static char title_text[2048] = "BPAC++";
-    ImGui::Text("Title: %s", current_File != nullptr? current_File->info.title.c_str() : title_text);
+    // static const char* title_text = current_File != nullptr? current_File->info.title.c_str() : "BPAC++";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Title: %s", "BPAC++");
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::Text("Title: %s", state.current_Root_File.info.title.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Title: %s", "BPAC++");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Title: %s", state.current_Folder_File.info.title.c_str());
+    } else {
+      ImGui::Text("Title: %s", "BPAC++");
+    }
     // input
     static char title_temp[2048] = "\0";
     ImGui::PushItemWidth(156.f);
       ImGui::InputTextWithHint("##change_title", "change title", title_temp, IM_ARRAYSIZE(title_temp));
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##title") && current_File != nullptr) {
-      current_File->info.title = title_temp;
+    if (ImGui::Button("Confirm##title")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.title = title_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.title = title_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
 
     // Author
     ImGui::Separator();
     // text
-    static char author_text[512] = u8"臧朗彦";
-    ImGui::Text("Author: %s", current_File != nullptr? current_File->info.author.c_str() : author_text);
+    // static const char* author_text = current_File != nullptr? current_File->info.author.c_str() : u8"臧朗彦";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Author: %s", u8"臧朗彦");
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::Text("Author: %s", state.current_Root_File.info.author.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Author: %s", u8"臧朗彦");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Author: %s", state.current_Folder_File.info.author.c_str());
+    } else {
+      ImGui::Text("Author: %s", u8"臧朗彦");
+    }
     // input
     static char author_temp[512] = "\0";
     ImGui::PushItemWidth(156.f);
       ImGui::InputTextWithHint("##change_author", "change author", author_temp, IM_ARRAYSIZE(author_temp));
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##author") && current_File != nullptr) {
-      current_File->info.author = author_temp;
+    if (ImGui::Button("Confirm##author")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.author = author_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.author = author_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
 
     // Journal
     ImGui::Separator();
     // text
-    static char journal_text[512] = "Journal of Bibliography Preview And Citation";
-    ImGui::Text("Journal: %s", current_File != nullptr? current_File->info.journal.c_str() : journal_text);
+    // static const char* journal_text = current_File != nullptr? current_File->info.journal.c_str() : "Journal of Bibliography Preview And Citation";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Journal: %s", "Journal of Bibliography Preview And Citation");
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::Text("Journal: %s", state.current_Root_File.info.journal.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Journal: %s", "Journal of Bibliography Preview And Citation");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Journal: %s", state.current_Folder_File.info.journal.c_str());
+    } else {
+      ImGui::Text("Journal: %s", "Journal of Bibliography Preview And Citation");
+    }
     // input
     static char journal_temp[512] = "\0";
     ImGui::PushItemWidth(156.f);
       ImGui::InputTextWithHint("##change_journal", "change journal", journal_temp, IM_ARRAYSIZE(journal_temp));
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##journal") && current_File != nullptr) {
-      current_File->info.journal = journal_temp;
+    if (ImGui::Button("Confirm##journal")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.journal = journal_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.journal = journal_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
     
     // Year
     ImGui::Separator();
     static int year_holder = 2023;
-    ImGui::InputInt("Year", current_File != nullptr? &current_File->info.year : &year_holder);
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::InputInt("Year", &year_holder);
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::InputInt("Year", &state.current_Root_File.info.year);
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::InputInt("Year", &year_holder);
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::InputInt("Year", &state.current_Folder_File.info.year);
+    } else {
+      ImGui::InputInt("Year", &year_holder);
+    }
 
 
     // Publisher
     ImGui::Separator();
     // text
-    static char publisher_text[512] = "Bibliography Preview And Citation(BPAC) Publisher";
-    ImGui::Text("Publisher: %s", current_File != nullptr? current_File->info.publisher.c_str() : publisher_text);
+    // static const char* publisher_text = current_File != nullptr? current_File->info.publisher.c_str() : "Bibliography Preview And Citation(BPAC) Publisher";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Publisher: %s", "Bibliography Preview And Citation(BPAC) Publisher");
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::Text("Publisher: %s", state.current_Root_File.info.publisher.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Publisher: %s", "Bibliography Preview And Citation(BPAC) Publisher");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Publisher: %s", state.current_Folder_File.info.publisher.c_str());
+    } else {
+      ImGui::Text("Publisher: %s", "Bibliography Preview And Citation(BPAC) Publisher");
+    }
     // input
     static char publisher_temp[512] = "\0";
     ImGui::PushItemWidth(156.f);
       ImGui::InputTextWithHint("##change_publisher", "change publisher", publisher_temp, IM_ARRAYSIZE(publisher_temp));
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##publisher") && current_File != nullptr) {
-      current_File->info.publisher = publisher_temp;
+    if (ImGui::Button("Confirm##publisher")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.publisher = publisher_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.publisher = publisher_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
 
     // Notes
     ImGui::Separator();
-    static char notes_temp[2048];
-    strcpy(notes_temp, current_File != nullptr? current_File->info.notes.c_str() : "");
-    ImGui::Text("Notes: ");
+    // static const char* notes_text = current_File != nullptr? current_File->info.notes.c_str() : "Note for BPAC++";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Notes: %s", "Note for BPAC++");
+    } else if (is_in_root && state.current_Root_File.path != "") {
+      ImGui::Text("Notes: %s", state.current_Root_File.info.notes.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Notes: %s", "Note for BPAC++");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Notes: %s", state.current_Folder_File.info.notes.c_str());
+    } else {
+      ImGui::Text("Notes: %s", "Note for BPAC++");
+    }
+    // input
+    static char notes_temp[2048] = "";
     ImGui::InputTextMultiline("##notes_input", notes_temp, IM_ARRAYSIZE(notes_temp));
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##notes") && current_File != nullptr) {
-      current_File->info.notes = notes_temp;
+    if (ImGui::Button("Confirm##notes")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.notes = notes_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.notes = notes_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
 
     // Citation Key
     ImGui::Separator();
     // text
-    static char citekey_text[512] = "BPAC-Zang-2023";
-    ImGui::Text("Citation Key: %s", current_File != nullptr? current_File->info.citekey.c_str() : citekey_text);
+    // static const char* citekey_text = current_File != nullptr? current_File->info.citekey.c_str() : "BPAC-Zang-2023";
+    if (is_in_root && state.current_Root_File.path == "") {
+      ImGui::Text("Citation Key: %s", "BPAC-Zang-2023");
+    } else if (is_in_root && state.current_Root_File.path != ""){
+      ImGui::Text("Citation Key: %s", state.current_Root_File.info.citekey.c_str());
+    } else if (!is_in_root && state.current_Folder_File.path == "") {
+      ImGui::Text("Citation Key: %s", "BPAC-Zang-2023");
+    } else if (!is_in_root && state.current_Folder_File.path != "") {
+      ImGui::Text("Citation Key: %s", state.current_Folder_File.info.citekey.c_str());
+    } else {
+      ImGui::Text("Citation Key: %s", "BPAC-Zang-2023");
+    }
     // input
     static char cite_key_temp[512] = "\0";
     ImGui::PushItemWidth(156.f);
       ImGui::InputTextWithHint("##change_cite_key", "change cite key", cite_key_temp, IM_ARRAYSIZE(cite_key_temp));
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    if (ImGui::Button("Confirm##cite_key") && current_File != nullptr) {
-      current_File->info.citekey = cite_key_temp;
+    if (ImGui::Button("Confirm##cite_key")) {
+      if (is_in_root && state.current_Root_File.path != "") {
+        state.files.erase(state.current_Root_File);
+          state.current_Root_File.info.citekey = cite_key_temp;
+        state.files.insert(state.current_Root_File);
+      } else if (!is_in_root && state.current_Folder_File.path != "") {
+        state.folders.erase(state.current_Folder);
+          state.current_Folder.files.erase(state.current_Folder_File);
+            state.current_Folder_File.info.citekey = cite_key_temp;
+          state.current_Folder.files.insert(state.current_Folder_File);
+        state.folders.insert(state.current_Folder);
+      }
     }
 
   ImGui::End();

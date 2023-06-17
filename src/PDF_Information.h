@@ -11,6 +11,8 @@
 #include <poppler-image.h>
 
 struct File_Info {
+  std::string path;
+  
   int type;
   std::string title;
   std::string author;
